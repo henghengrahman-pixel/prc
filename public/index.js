@@ -1,62 +1,156 @@
-async function getSettings() {
-  const res = await fetch("/api/settings", { cache: "no-store" });
-  return res.ok ? await res.json() : {};
+// public/index.js
+
+async function fetchJson(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
 }
 
-function setImgOrHide(imgEl, url) {
-  if (!url) { imgEl.style.display = "none"; return; }
-  imgEl.style.display = "";
-  imgEl.src = url;
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value ?? "";
 }
 
-function startSlider(imgEls) {
-  let i = 0;
-  imgEls.forEach((el, idx) => el.classList.toggle("active", idx === 0));
-  setInterval(() => {
-    imgEls[i].classList.remove("active");
-    i = (i + 1) % imgEls.length;
-    imgEls[i].classList.add("active");
-  }, 3000);
+function setHrefButton(id, url) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.onclick = () => (window.location.href = url || "#");
 }
 
-(async () => {
-  const s = await getSettings();
+function esc(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
-  // Background image (optional)
-  if (s.bg_enabled === "true") {
-    document.body.style.backgroundImage = `url(/api/image/bg)`;
+function percentClass(p) {
+  const n = Number(p || 0);
+  if (n >= 80) return "good";   // hijau
+  if (n >= 50) return "mid";    // kuning
+  return "bad";                 // merah
+}
+
+function renderProviders(list) {
+  const wrap = document.getElementById("providerBar");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+  for (const pv of list || []) {
+    const key = pv.provider_key || pv.key || "";
+    const name = pv.provider_name || pv.name || key;
+    const icon = pv.icon_url || pv.icon || "";
+
+    const item = document.createElement("div");
+    item.className = "prov-item";
+    item.dataset.key = key;
+
+    item.innerHTML = `
+      <button class="prov-btn" type="button" data-key="${esc(key)}" title="${esc(name)}">
+        <img loading="lazy" decoding="async" src="${esc(icon)}" alt="${esc(name)}" />
+        <span>${esc(name)}</span>
+      </button>
+    `;
+
+    wrap.appendChild(item);
+  }
+}
+
+function renderGames(list) {
+  const grid = document.getElementById("gamesGrid");
+  if (!grid) return;
+
+  grid.innerHTML = "";
+
+  for (const g of list || []) {
+    const title = g.title || "";
+    const img = g.image_url || "";
+    const pola1 = g.pola1 || "";
+    const pola2 = g.pola2 || "";
+    const pola3 = g.pola3 || "";
+    const jam = g.jam || "";
+    const percent = Number(g.percent || 0);
+    const hot = !!g.is_hot;
+    const isNew = !!g.is_new;
+    const label = g.label || ""; // opsional: "EKSKLUSIF"
+    const pClass = percentClass(percent);
+
+    const card = document.createElement("div");
+    card.className = "game-card";
+    card.innerHTML = `
+      ${hot ? `<div class="badge badge-hot">HOT</div>` : ""}
+      <div class="game-left">
+        <div class="game-imgbox">
+          ${label ? `<div class="badge badge-label">${esc(label)}</div>` : ""}
+          ${isNew ? `<div class="badge badge-new">NEW</div>` : ""}
+          <img loading="lazy" decoding="async" src="${esc(img)}" alt="${esc(title)}" />
+        </div>
+      </div>
+
+      <div class="game-right">
+        <div class="pola-title">Pola Slot:</div>
+        <div class="pola-lines">
+          <div class="pola-line">${esc(pola1)}</div>
+          <div class="pola-line">${esc(pola2)}</div>
+          <div class="pola-line">${esc(pola3)}</div>
+        </div>
+        <div class="jam">Jam: <span>${esc(jam)}</span></div>
+
+        <div class="percent-wrap ${pClass}">
+          <div class="percent-bar" style="width:${Math.max(0, Math.min(100, percent))}%"></div>
+          <div class="percent-text">${percent}%</div>
+        </div>
+      </div>
+    `;
+
+    grid.appendChild(card);
+  }
+}
+
+async function loadAll() {
+  const settings = (await fetchJson("/api/settings")) || {};
+  const providers = (await fetchJson("/api/providers")) || [];
+  const games = (await fetchJson("/api/games")) || [];
+
+  // Background (optional) -> pakai link langsung biar ringan
+  if (settings.bg_url) {
+    document.body.style.backgroundImage = `url(${settings.bg_url})`;
   } else {
     document.body.style.backgroundImage = "none";
   }
 
-  // logo + slides (served from DB)
-  setImgOrHide(document.getElementById("logo"), "/api/image/logo");
-  setImgOrHide(document.getElementById("slide1"), "/api/image/slide1");
-  setImgOrHide(document.getElementById("slide2"), "/api/image/slide2");
-  setImgOrHide(document.getElementById("slide3"), "/api/image/slide3");
+  // Header text
+  setText("rtpUpdatedText", settings.rtp_updated_text || "");
+  setText("sectionTitle", settings.section_title || "");
+  setText("sukaValue", settings.suka_value || "");
 
-  // text
-  if (s.marquee_text) document.getElementById("marqueeText").textContent = s.marquee_text;
-  if (s.subtitle_text) document.getElementById("subtitle").textContent = s.subtitle_text;
+  // Buttons
+  setHrefButton("btnLogin", settings.login_url || "#");
+  setHrefButton("btnDaftar", settings.daftar_url || "#");
 
-  // buttons
-  const loginUrl = s.login_url || "#";
-  const daftarUrl = s.daftar_url || "#";
+  // Providers + Games
+  renderProviders(providers);
+  renderGames(games);
 
-  document.getElementById("btnLogin").onclick = () => window.location.href = loginUrl;
-  document.getElementById("btnDaftar").onclick = () => window.location.href = daftarUrl;
-
-  // pills (simple list from admin, comma-separated)
-  const pillsWrap = document.getElementById("pills");
-  const pills = (s.pills || "").split(",").map(x => x.trim()).filter(Boolean);
-  pillsWrap.innerHTML = "";
-  for (const p of pills) {
-    const div = document.createElement("div");
-    div.className = "pill";
-    div.textContent = p;
-    pillsWrap.appendChild(div);
+  // Provider filter (klik icon -> filter)
+  const wrap = document.getElementById("providerBar");
+  if (wrap) {
+    wrap.onclick = (e) => {
+      const btn = e.target.closest(".prov-btn");
+      if (!btn) return;
+      const key = btn.dataset.key || "";
+      const filtered = key ? games.filter((x) => (x.provider || "") === key) : games;
+      renderGames(filtered);
+    };
   }
+}
 
-  // slider
-  startSlider([document.getElementById("slide1"), document.getElementById("slide2"), document.getElementById("slide3")]);
-})();
+// Auto refresh tiap 60 menit (biar update batch per jam)
+function enableHourlyReload() {
+  setInterval(() => loadAll().catch(() => {}), 60 * 60 * 1000);
+}
+
+loadAll().then(enableHourlyReload).catch(console.error);
