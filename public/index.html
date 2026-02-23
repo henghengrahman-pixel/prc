@@ -3,99 +3,26 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Landing Page</title>
+  <title>Live RTP</title>
   <link rel="icon" href="data:," />
-  <style>
-    :root{
-      --bg:#0b0c0f;
-      --card:#151821;
-      --line:#2a2f3a;
-      --text:#f2f4f8;
-      --muted:#aeb6c6;
-      --accent:#ffd86b;
-      --btn1:#28a745;
-      --btn2:#ffc107;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      min-height:100vh;
-      background-size:cover;
-      background-position:center;
-      background-attachment:fixed;
-    }
-    .wrap{max-width:980px;margin:0 auto;padding:14px}
-    .logo{display:flex;justify-content:center;margin:10px 0 14px}
-    .logo img{height:58px;max-width:80vw;object-fit:contain;filter:drop-shadow(0 6px 12px rgba(0,0,0,.35))}
-    .hero{
-      border:1px solid var(--line);
-      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0));
-      border-radius:14px;
-      overflow:hidden;
-      box-shadow:0 12px 28px rgba(0,0,0,.35);
-    }
-    .marquee{
-      background:rgba(0,0,0,.35);
-      border-bottom:1px solid var(--line);
-      color:var(--muted);
-      font-size:13px;
-      padding:10px 12px;
-      white-space:nowrap;
-      overflow:hidden;
-    }
-    .marquee span{display:inline-block; padding-left:100%; animation:scroll 18s linear infinite;}
-    @keyframes scroll { from{transform:translateX(0)} to{transform:translateX(-100%)} }
-
-    .slider{position:relative;aspect-ratio: 16/6; background:#0a0a0a;}
-    .slider img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:.35s}
-    .slider img.active{opacity:1}
-    .btnrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-    .btn{
-      border:0;border-radius:12px;
-      padding:12px 14px;
-      font-weight:800;
-      cursor:pointer;
-      letter-spacing:.3px;
-      box-shadow:0 10px 18px rgba(0,0,0,.25);
-    }
-    .btn.login{background:var(--btn1);color:#fff}
-    .btn.daftar{background:var(--btn2);color:#161616}
-    .card{
-      margin-top:14px;
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.35);
-      border-radius:14px;
-      padding:12px;
-    }
-    .muted{color:var(--muted);font-size:13px;line-height:1.35}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
-    .pill{
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.04);
-      padding:8px 10px;
-      border-radius:999px;
-      font-size:12px;
-      color:var(--muted);
-    }
-    .adminlink{
-      display:inline-block;
-      margin-top:10px;
-      font-size:12px;
-      color:var(--muted);
-      text-decoration:none;
-    }
-    .adminlink:hover{color:var(--accent)}
-  </style>
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="wrap">
-    <div class="logo">
-      <img id="logo" alt="logo" />
+
+    <!-- TOP -->
+    <div class="topbar">
+      <div class="brand">
+        <img id="logo" alt="logo" />
+      </div>
+
+      <div class="rtp-updated">
+        <span class="dot"></span>
+        <span id="rtpUpdatedText">Update RTP: -</span>
+      </div>
     </div>
 
+    <!-- HERO (optional marquee + slider kalau kamu masih mau) -->
     <div class="hero">
       <div class="marquee"><span id="marqueeText">Selamat datang.</span></div>
       <div class="slider" aria-label="slider">
@@ -105,16 +32,34 @@
       </div>
     </div>
 
+    <!-- BUTTONS -->
     <div class="btnrow">
       <button class="btn login" id="btnLogin">LOGIN</button>
       <button class="btn daftar" id="btnDaftar">DAFTAR</button>
     </div>
 
-    <div class="card">
-      <div class="muted" id="subtitle">Konten bisa kamu atur dari halaman admin.</div>
-      <div class="row" id="pills"></div>
+    <!-- MAIN PANEL -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="section-title" id="sectionTitle">PRAGMATIC PLAY SLOT LIVE RTP</div>
+        <div class="suka">
+          SUKA(<span id="sukaValue">0</span>)
+          <span class="stars" aria-hidden="true">★★★★★</span>
+        </div>
+      </div>
+
+      <!-- PROVIDERS BAR -->
+      <div class="provider-bar" id="providerBar"></div>
+
+      <!-- SUBTITLE -->
+      <div class="subtitle muted" id="subtitle">Konten bisa kamu atur dari halaman admin.</div>
+
+      <!-- GAMES GRID (diisi dari DB lewat index.js) -->
+      <div class="games-grid" id="gamesGrid"></div>
+
       <a class="adminlink" href="/admin.html">Buka Admin</a>
     </div>
+
   </div>
 
   <script src="/index.js"></script>
