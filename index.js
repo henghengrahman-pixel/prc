@@ -16,9 +16,12 @@ const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
 const ADMIN_TOKEN_TTL_MIN = parseInt(process.env.ADMIN_TOKEN_TTL_MIN || "120", 10);
 
 // snapshot settings
-const SNAPSHOT_SIZE = parseInt(process.env.SNAPSHOT_SIZE || "12", 10); // jumlah card tampil
-const SNAPSHOT_TTL_HOURS = parseInt(process.env.SNAPSHOT_TTL_HOURS || "2", 10); // ambil snapshot max umur N jam
-const SNAPSHOT_CRON = (process.env.SNAPSHOT_CRON || "0 * * * *").trim(); // tiap jam menit 00 (default)
+const SNAPSHOT_SIZE = parseInt(process.env.SNAPSHOT_SIZE || "12", 10);
+const SNAPSHOT_TTL_HOURS = parseInt(process.env.SNAPSHOT_TTL_HOURS || "2", 10);
+const SNAPSHOT_CRON = (process.env.SNAPSHOT_CRON || "0 * * * *").trim();
+
+if (!DATABASE_URL) console.warn("⚠️ Missing DATABASE_URL");
+if (!ADMIN_PASSWORD) console.warn("⚠️ Missing ADMIN_PASSWORD");
 
 // ====== DB ======
 const { Pool } = pg;
@@ -28,7 +31,6 @@ const pool = new Pool({
 });
 
 function nowIdDateIndo() {
-  // format: Selasa, 24 Februari 2026
   const d = new Date();
   const days = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
   const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -40,7 +42,6 @@ function nowIdDateIndo() {
 }
 
 async function initDb() {
-  // settings table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS site_settings (
       key TEXT PRIMARY KEY,
@@ -49,7 +50,6 @@ async function initDb() {
     );
   `);
 
-  // providers (icon bar)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS providers (
       provider_key TEXT PRIMARY KEY,
@@ -61,7 +61,6 @@ async function initDb() {
     );
   `);
 
-  // pool games (source data, image from link)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pool_games (
       id SERIAL PRIMARY KEY,
@@ -81,7 +80,6 @@ async function initDb() {
     );
   `);
 
-  // snapshots (what is displayed now)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS game_snapshots (
       id SERIAL PRIMARY KEY,
@@ -103,14 +101,15 @@ async function initDb() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_snapshots_created ON game_snapshots(created_at DESC);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_pool_provider ON pool_games(provider);`);
 
-  // seed settings default (only if not exists)
   const defaults = {
+    marquee_text: "Selamat datang.",
+    subtitle_text: "Konten bisa kamu atur dari halaman admin.",
     login_url: "#",
     daftar_url: "#",
     section_title: "PRAGMATIC PLAY SLOT LIVE RTP",
     suka_value: "5.9",
     rtp_updated_text: `Update RTP: ${nowIdDateIndo()}`,
-    bg_url: "", // kalau mau background pakai link
+    bg_url: "",
   };
 
   await pool.query("BEGIN");
@@ -131,7 +130,7 @@ async function initDb() {
 }
 
 // ====== Auth (simple token in memory) ======
-const tokenStore = new Map(); // token -> expiresAt(ms)
+const tokenStore = new Map();
 
 function issueToken() {
   const token = crypto.randomBytes(24).toString("hex");
@@ -167,9 +166,7 @@ function clampInt(n, min, max, fallback = 0) {
 function pickRandom(arr, n) {
   const a = [...arr];
   const out = [];
-  while (a.length && out.length < n) {
-    out.push(a.splice(Math.floor(Math.random() * a.length), 1)[0]);
-  }
+  while (a.length && out.length < n) out.push(a.splice(Math.floor(Math.random() * a.length), 1)[0]);
   return out;
 }
 
@@ -182,12 +179,9 @@ async function setSetting(key, value) {
   );
 }
 
-// ====== Snapshot generator (hourly) ======
+// ====== Snapshot generator ======
 async function generateSnapshot() {
-  // ambil pool game yang enabled
-  const r = await pool.query(
-    `SELECT * FROM pool_games WHERE enabled=true ORDER BY updated_at DESC`
-  );
+  const r = await pool.query(`SELECT * FROM pool_games WHERE enabled=true ORDER BY updated_at DESC`);
   const poolList = r.rows || [];
   if (poolList.length === 0) {
     console.log("⚠️ No pool games. Skip snapshot.");
@@ -198,36 +192,23 @@ async function generateSnapshot() {
 
   await pool.query("BEGIN");
   try {
-    // insert snapshot batch baru
     for (const g of chosen) {
       await pool.query(
         `INSERT INTO game_snapshots(provider,title,image_url,label,pola1,pola2,pola3,jam,percent,is_hot,is_new,created_at)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())`,
         [
-          g.provider,
-          g.title,
-          g.image_url,
-          g.label || "",
-          g.pola1 || "",
-          g.pola2 || "",
-          g.pola3 || "",
-          g.jam || "",
-          clampInt(g.percent, 0, 100, 0),
-          !!g.is_hot,
-          !!g.is_new,
+          g.provider, g.title, g.image_url,
+          g.label || "", g.pola1 || "", g.pola2 || "", g.pola3 || "",
+          g.jam || "", clampInt(g.percent, 0, 100, 0),
+          !!g.is_hot, !!g.is_new
         ]
       );
     }
 
-    // update text “Update RTP: ...”
     await setSetting("rtp_updated_text", `Update RTP: ${nowIdDateIndo()}`);
-
-    // optional: bersihin snapshot lama biar DB tidak bengkak
-    await pool.query(
-      `DELETE FROM game_snapshots WHERE created_at < NOW() - INTERVAL '7 days'`
-    );
-
+    await pool.query(`DELETE FROM game_snapshots WHERE created_at < NOW() - INTERVAL '7 days'`);
     await pool.query("COMMIT");
+
     console.log("✅ Snapshot generated:", chosen.length, "items");
     return { ok: true, count: chosen.length };
   } catch (e) {
@@ -243,8 +224,6 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // ====== Public APIs ======
-
-// settings
 app.get("/api/settings", async (_req, res) => {
   try {
     const r = await pool.query(`SELECT key,value FROM site_settings`);
@@ -257,7 +236,6 @@ app.get("/api/settings", async (_req, res) => {
   }
 });
 
-// providers (icon bar)
 app.get("/api/providers", async (_req, res) => {
   try {
     const r = await pool.query(
@@ -273,10 +251,8 @@ app.get("/api/providers", async (_req, res) => {
   }
 });
 
-// games (snapshot terbaru)
 app.get("/api/games", async (_req, res) => {
   try {
-    // ambil snapshot terbaru dalam TTL jam
     const r = await pool.query(
       `SELECT provider,title,image_url,label,pola1,pola2,pola3,jam,percent,is_hot,is_new,created_at
        FROM game_snapshots
@@ -286,7 +262,6 @@ app.get("/api/games", async (_req, res) => {
       [String(SNAPSHOT_TTL_HOURS), Math.max(1, SNAPSHOT_SIZE)]
     );
 
-    // kalau kosong, coba generate sekali
     if ((r.rows || []).length === 0) {
       await generateSnapshot();
       const r2 = await pool.query(
@@ -306,7 +281,6 @@ app.get("/api/games", async (_req, res) => {
   }
 });
 
-// health
 app.get("/api/health", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
@@ -317,7 +291,6 @@ app.get("/api/health", async (_req, res) => {
 });
 
 // ====== Admin APIs ======
-
 app.post("/api/admin/login", (req, res) => {
   const { password } = req.body || {};
   if ((password || "").trim() !== ADMIN_PASSWORD) return res.status(401).json({ error: "Wrong password" });
@@ -325,7 +298,6 @@ app.post("/api/admin/login", (req, res) => {
   res.json({ token, expiresAt });
 });
 
-// save settings (key/value)
 app.post("/api/admin/settings", requireAdmin, async (req, res) => {
   const body = req.body || {};
   const entries = Object.entries(body).filter(
@@ -349,6 +321,66 @@ app.post("/api/admin/settings", requireAdmin, async (req, res) => {
     await pool.query("ROLLBACK");
     console.error(e);
     res.status(500).json({ error: "Failed to save settings" });
+  }
+});
+
+// ====== SEED STATUS (cek data ada/tidak) ======
+app.get("/api/admin/seed-status", requireAdmin, async (_req, res) => {
+  try {
+    const a = await pool.query(`SELECT COUNT(*)::int AS c FROM providers`);
+    const b = await pool.query(`SELECT COUNT(*)::int AS c FROM pool_games`);
+    const c = await pool.query(`SELECT COUNT(*)::int AS c FROM game_snapshots`);
+    res.json({ providers: a.rows[0].c, pool_games: b.rows[0].c, snapshots: c.rows[0].c });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ====== SEED (isi data tanpa SQL editor) ======
+app.post("/api/admin/seed", requireAdmin, async (_req, res) => {
+  try {
+    const provCount = (await pool.query(`SELECT COUNT(*)::int AS c FROM providers`)).rows[0].c;
+    const poolCount = (await pool.query(`SELECT COUNT(*)::int AS c FROM pool_games`)).rows[0].c;
+
+    await pool.query("BEGIN");
+
+    // isi provider kalau masih kosong
+    if (provCount === 0) {
+      await pool.query(`
+        INSERT INTO providers (provider_key, provider_name, icon_url, order_no, enabled)
+        VALUES
+        ('pp','PRAGMATIC','https://via.placeholder.com/64?text=PP',1,true),
+        ('pg','PGSOFT','https://via.placeholder.com/64?text=PG',2,true),
+        ('hb','HABANERO','https://via.placeholder.com/64?text=HB',3,true),
+        ('idn','IDN','https://via.placeholder.com/64?text=IDN',4,true)
+        ON CONFLICT (provider_key) DO NOTHING;
+      `);
+    }
+
+    // isi pool games kalau masih kosong
+    if (poolCount === 0) {
+      await pool.query(`
+        INSERT INTO pool_games (provider,title,image_url,label,pola1,pola2,pola3,jam,percent,is_hot,is_new,enabled)
+        VALUES
+        ('pp','Fantastic Freespins','https://via.placeholder.com/300?text=Game1','EKSKLUSIF','Manual 9','Manual 7','Auto 70','02:22 - 06:26',82,true,true,true),
+        ('pp','Anime Mecha','https://via.placeholder.com/300?text=Game2','','Auto 30','Manual 8','Auto 50','01:10 - 03:40',67,false,true,true),
+        ('pg','Mahjong Ways','https://via.placeholder.com/300?text=Game3','','Manual 6','Auto 40','Auto 70','10:00 - 12:00',74,true,false,true),
+        ('hb','Hot Hot Fruit','https://via.placeholder.com/300?text=Game4','','Auto 20','Auto 50','Manual 9','14:00 - 16:00',58,false,false,true),
+        ('idn','Zeus IDN','https://via.placeholder.com/300?text=Game5','','Manual 5','Manual 7','Auto 30','19:00 - 21:00',90,true,true,true);
+      `);
+    }
+
+    await pool.query("COMMIT");
+
+    // buat snapshot
+    const snap = await generateSnapshot();
+
+    res.json({ ok: true, seeded_providers: provCount === 0, seeded_pool: poolCount === 0, snapshot: snap });
+  } catch (e) {
+    await pool.query("ROLLBACK");
+    console.error(e);
+    res.status(500).json({ error: "Seed failed" });
   }
 });
 
@@ -497,7 +529,6 @@ app.post("/api/admin/pool-games/delete", requireAdmin, async (req, res) => {
   }
 });
 
-// force generate snapshot now (button admin)
 app.post("/api/admin/snapshot/run", requireAdmin, async (_req, res) => {
   const result = await generateSnapshot();
   res.json(result);
@@ -506,10 +537,8 @@ app.post("/api/admin/snapshot/run", requireAdmin, async (_req, res) => {
 // ====== Start + Cron ======
 initDb()
   .then(async () => {
-    // generate once at boot (if empty)
     await generateSnapshot();
 
-    // schedule hourly snapshot
     try {
       cron.schedule(SNAPSHOT_CRON, async () => {
         await generateSnapshot();
